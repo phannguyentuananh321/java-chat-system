@@ -1,0 +1,14 @@
+# ===================================================================
+# File cấu hình mẫu - Chat System (Môn Lập trình ứng dụng Java)
+# HƯỚNG DẪN: Sao chép file này thành config.properties và điền cấu hình thực tế.
+# Không commit file config.properties chứa thông tin nhạy cảm lên Git.
+# ===================================================================
+
+# Cấu hình kết nối TCP Socket (Server sẽ được phát triển ở Phiên bản 2)
+app.server.host=127.0.0.1
+app.server.port=8888
+
+# Cấu hình giao diện Swing
+app.ui.theme=light
+app.ui.window.width=1000
+app.ui.window.height=650
