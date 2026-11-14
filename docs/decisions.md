@@ -20,6 +20,7 @@
 ## 2. Quyết định công nghệ (Technology Decisions)
 
 - **Ngôn ngữ & Nền tảng:** Java 17 LTS (mã nguồn mã hóa chuẩn UTF-8 để hỗ trợ tiếng Việt có dấu).
+- **Cơ sở dữ liệu:** MySQL 8.0+ (utf8mb4_unicode_ci), schema phiên bản v2 chuẩn hóa (11 bảng + 1 VIEW hỗ trợ bạn của bạn, kiểm tra toàn vẹn CHECK constraints, FULLTEXT index tìm kiếm tin nhắn).
 - **Công cụ quản lý dự án & Build:** Apache Maven đa module (Multi-Module Maven Project).
 - **Thư viện giao diện:** `com.formdev:flatlaf` (phiên bản 3.5.4) mang lại giao diện hiện đại, sạch sẽ và nhất quán. Có lớp `Theme.java` tự động dự phòng sang `SystemLookAndFeel` nếu môi trường không tương thích.
 - **Thư viện kiểm thử:** JUnit 5 (Jupiter BOM `5.10.2`).
