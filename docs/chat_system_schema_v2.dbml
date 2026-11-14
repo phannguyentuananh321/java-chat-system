@@ -1,0 +1,523 @@
+// ==========================================================
+// CHAT SYSTEM - DATABASE SCHEMA v2 (bản nâng cấp)
+// Dán vào https://dbdiagram.io để xem sơ đồ / export SQL.
+// Đánh dấu thay đổi so với v1: [NEW] thêm | [CHANGED] sửa | [REMOVED] bỏ
+// Các ràng buộc CHECK và FULLTEXT index mà DBML không diễn đạt được
+// được ghi trong Note của từng bảng -> nhớ đưa vào script SQL.
+// ==========================================================
+
+
+// ==========================================
+// ENUMS
+// ==========================================
+
+Enum gender_type {
+  MALE
+  FEMALE
+  OTHER
+}
+
+Enum account_status {
+  ACTIVE
+  LOCKED
+}
+
+Enum user_role {
+  USER
+  ADMIN
+}
+
+Enum conversation_type {
+  DIRECT
+  GROUP
+}
+
+Enum member_role {
+  MEMBER
+  ADMIN
+}
+
+Enum friend_request_status {
+  PENDING
+  ACCEPTED
+  REJECTED
+}
+
+Enum report_status {
+  OPEN
+  REVIEWED
+  DISMISSED
+}
+
+
+// ==========================================
+// 1. USERS
+// Dùng chung cho cả admin và user (phân biệt bằng role)
+// ==========================================
+
+Table users {
+  user_id int [pk, increment]
+
+  username varchar(30) [not null, unique]
+  password_hash varchar(255) [not null]
+
+  // [NEW] true khi mật khẩu vừa được random gửi email / admin đặt lại
+  // -> bắt người dùng đổi mật khẩu ở lần đăng nhập kế tiếp
+  must_change_password boolean [not null, default: false]
+
+  full_name varchar(100) [not null]
+  email varchar(254) [not null, unique]
+  address varchar(255)
+  date_of_birth date
+  gender gender_type
+
+  account_status account_status [not null, default: 'ACTIVE']
+  role user_role [not null, default: 'USER']
+
+  // Khóa công khai (RSA/ECDH) để nhận khóa nhóm mã hóa. Client sinh khi đăng ký.
+  public_key text
+
+  // [NEW] (tuỳ chọn) khóa riêng đã được mã hóa Ở PHÍA CLIENT, server không bao giờ
+  // giữ private key dạng đọc được. Cách làm gợi ý: client dẫn xuất khóa bọc từ
+  // mật khẩu bằng PBKDF2 (salt ngẫu nhiên) rồi mã hóa private key bằng AES-GCM.
+  // Chuỗi lưu ở đây đóng gói sẵn: version | salt | iterations | nonce | ciphertext+tag
+  // (Base64), không cần tách thành nhiều cột.
+  // Hạn chế: nếu dùng chính mật khẩu đăng nhập để dẫn xuất khóa thì server từng
+  // nhận mật khẩu lúc đăng nhập, nên chưa phải zero-knowledge hoàn toàn. Muốn chặt
+  // hơn thì dùng passphrase/PIN riêng cho mã hóa.
+  // Khi "khởi tạo lại mật khẩu" phải sinh cặp khóa mới (lịch sử nhóm mã hóa cũ
+  // sẽ không đọc được nữa).
+  encrypted_private_key text
+
+  created_at timestamp [not null, default: `now()`]
+  updated_at timestamp
+  deleted_at timestamp
+
+  indexes {
+    (full_name)
+    (created_at)
+    (account_status, created_at)
+  }
+
+  Note: '''
+  Xóa user = soft delete (set deleted_at), không DELETE thật để không vỡ
+  khóa ngoại của messages/sessions/reports. Mọi query danh sách thêm
+  điều kiện deleted_at IS NULL.
+  Chính sách xóa tài khoản (đã chốt): XÓA MỀM + GIẢI PHÓNG username/email.
+  Dòng users cũ vẫn giữ lại (để tin nhắn cũ còn người gửi) nhưng không còn
+  đăng nhập được và không còn chiếm username/email, nên có thể đăng ký tài
+  khoản MỚI (user_id khác) bằng cùng email/username. Khi admin xóa user, chạy
+  trong 1 transaction:
+    UPDATE users SET
+      username = CONCAT('deleted#', user_id),
+      email = CONCAT('deleted+', user_id, '@deleted.invalid'),
+      password_hash = '!', address = NULL, date_of_birth = NULL, gender = NULL,
+      public_key = NULL, encrypted_private_key = NULL,
+      account_status = 'LOCKED', deleted_at = NOW(), updated_at = NOW()
+    WHERE user_id = ? AND deleted_at IS NULL;
+    DELETE FROM friendships WHERE user_low_id = ? OR user_high_id = ?;
+    DELETE FROM friend_requests WHERE sender_id = ? OR receiver_id = ?;
+    DELETE FROM user_blocks WHERE blocker_user_id = ? OR blocked_user_id = ?;
+    DELETE FROM conversation_member_keys WHERE user_id = ?;
+    UPDATE conversation_members SET left_at = NOW()
+      WHERE user_id = ? AND left_at IS NULL;
+    UPDATE user_sessions SET logout_at = NOW()
+      WHERE user_id = ? AND logout_at IS NULL;
+  Quy tắc đi kèm:
+    - Đăng ký chỉ cho username theo mẫu [A-Za-z0-9_.] (không có ký tự #) nên
+      không thể trùng 'deleted#<id>'; email đuôi .invalid không đăng ký thật được.
+    - Đăng nhập luôn thêm điều kiện deleted_at IS NULL. Người gửi đã xóa hiển
+      thị là "full_name (đã xóa)"; không cho gửi tin vào chat 1-1 với tài
+      khoản đã xóa.
+    - Nếu user bị xóa là admin duy nhất của một nhóm thì phải chỉ định admin khác.
+  Biểu đồ đăng ký theo năm: dùng khoảng thời gian
+  (created_at >= 'YYYY-01-01' AND created_at < 'YYYY+1-01-01'),
+  đừng dùng YEAR(created_at) vì không dùng được index.
+  '''
+}
+
+
+// ==========================================
+// 2. USER SESSIONS
+// Mỗi lần đăng nhập thành công = 1 dòng
+// ==========================================
+
+Table user_sessions {
+  session_id bigint [pk, increment]
+  user_id int [not null, ref: > users.user_id]
+
+  login_at timestamp [not null, default: `now()`]
+  last_seen_at timestamp [not null, default: `now()`]
+  logout_at timestamp
+
+  indexes {
+    (user_id, login_at)                 // lịch sử đăng nhập 1 user, đếm số lần mở ứng dụng
+    (login_at)                          // danh sách đăng nhập theo thời gian, biểu đồ theo năm
+    (user_id, logout_at, last_seen_at)  // [NEW] kiểm tra online của 1 user / danh sách bạn bè
+    (logout_at, last_seen_at)           // job dọn session bị treo
+  }
+
+  Note: '''
+  1 session = 1 lần "mở ứng dụng" cho thống kê hoạt động.
+  Online = EXISTS session với logout_at IS NULL
+           AND last_seen_at > now() - 60 giây (client gửi heartbeat định kỳ).
+  Session bị treo (app tắt đột ngột) tự hết hạn nhờ last_seen_at.
+  '''
+}
+
+
+// ==========================================
+// [REMOVED] password_reset_tokens
+// Đề yêu cầu "random mật khẩu và gửi email" -> không cần token.
+// Quy trình: random mật khẩu -> hash -> lưu password_hash
+//            -> must_change_password = true -> gửi email.
+// (Nếu muốn làm bản an toàn hơn dạng link đặt lại mật khẩu như một
+//  tính năng làm thêm thì khôi phục bảng này.)
+// ==========================================
+
+
+// ==========================================
+// 3. CONVERSATIONS
+// Một bảng cho cả chat 1-1 và nhóm
+// ==========================================
+
+Table conversations {
+  conversation_id int [pk, increment]
+
+  conversation_type conversation_type [not null]
+  title varchar(100)
+
+  created_by_user_id int [not null, ref: > users.user_id]
+
+  // [NEW] Chat 1-1: lưu cặp user (low < high). Unique => mỗi cặp chỉ có
+  // đúng 1 cuộc trò chuyện. Luôn NULL với GROUP.
+  direct_user_low_id int [ref: > users.user_id]
+  direct_user_high_id int [ref: > users.user_id]
+
+  // [NEW] Nhóm mã hóa: chọn khi tạo nhóm, không đổi sau đó.
+  is_encrypted boolean [not null, default: false]
+  // [NEW] Phiên bản khóa hiện hành (0 = không mã hóa; mã hóa bắt đầu từ 1).
+  // Tăng lên mỗi khi xóa thành viên khỏi nhóm mã hóa (đổi khóa).
+  current_key_version int [not null, default: 0]
+
+  created_at timestamp [not null, default: `now()`]
+  updated_at timestamp
+
+  indexes {
+    (conversation_type, title)
+    (conversation_type, created_at)
+    (direct_user_low_id, direct_user_high_id) [unique]  // [NEW]
+  }
+
+  Note: '''
+  CHECK (
+    (conversation_type = 'DIRECT'
+       AND direct_user_low_id IS NOT NULL AND direct_user_high_id IS NOT NULL
+       AND direct_user_low_id < direct_user_high_id)
+    OR
+    (conversation_type = 'GROUP'
+       AND direct_user_low_id IS NULL AND direct_user_high_id IS NULL)
+  )
+  CHECK (conversation_type = 'GROUP' OR is_encrypted = false)
+  Unique + CHECK chỉ đảm bảo cặp ID hợp lệ và không trùng; chúng KHÔNG đảm bảo
+  hai ID này khớp đúng 2 dòng trong conversation_members. Hãy tạo conversation
+  và 2 thành viên trong cùng 1 transaction, dùng cùng low/high id.
+  Tìm chat 1-1 giữa A và B:
+    WHERE direct_user_low_id = LEAST(A,B) AND direct_user_high_id = GREATEST(A,B)
+  '''
+}
+
+
+// ==========================================
+// 4. CONVERSATION MEMBERS
+// Thành viên và admin nhóm
+// ==========================================
+
+Table conversation_members {
+  conversation_id int [not null, ref: > conversations.conversation_id]
+  user_id int [not null, ref: > users.user_id]
+
+  member_role member_role [not null, default: 'MEMBER']
+
+  joined_at timestamp [not null, default: `now()`]
+  left_at timestamp
+
+  // Xóa toàn bộ lịch sử chat chỉ ở phía user này
+  history_cleared_at timestamp
+
+  // [NEW] (tuỳ chọn) mốc đã đọc, dùng đếm tin chưa đọc khi user offline:
+  // COUNT(messages WHERE sent_at > last_read_at AND sender_id <> user)
+  last_read_at timestamp
+
+  indexes {
+    (conversation_id, user_id) [pk]
+    (user_id, left_at, conversation_id)
+  }
+
+  Note: '''
+  Thêm lại người đã rời/bị xóa: UPDATE dòng cũ (left_at = NULL, joined_at = now())
+  vì PK là (conversation_id, user_id).
+  Thành viên hiện tại của nhóm: left_at IS NULL.
+  Chat 1-1 luôn có đúng 2 dòng.
+  Không DELETE vật lý thành viên đã rời/bị xóa (còn cần giữ lịch sử tin nhắn
+  và khóa nhóm); chỉ set left_at.
+  '''
+}
+
+
+// ==========================================
+// 5. MESSAGES
+// ==========================================
+
+Table messages {
+  message_id bigint [pk, increment]
+
+  conversation_id int [not null]
+  sender_id int [not null]
+
+  // Nhóm thường / chat 1-1: nội dung thật.
+  // Nhóm mã hóa: ciphertext (Base64).
+  content text [not null]
+
+  // [NEW] Chỉ có giá trị với nhóm mã hóa: phiên bản khóa và nonce
+  // (AES-GCM, 12 byte, Base64) dùng để giải mã. NULL với tin nhắn thường.
+  // [CHANGED] đổi tên iv -> nonce cho đúng thuật ngữ AES-GCM.
+  key_version int
+  nonce varchar(64)
+
+  sent_at timestamp [not null, default: `now()`]
+  edited_at timestamp
+
+  indexes {
+    (conversation_id, sent_at)
+    (sender_id, sent_at)
+  }
+
+  Note: '''
+  [CHANGED] sender_id không chỉ tham chiếu users mà phải là THÀNH VIÊN
+  của conversation (khóa ngoại ghép ở cuối file).
+  Lưu ý: FK ghép chỉ đảm bảo người gửi TỪNG là thành viên. Khi gửi tin,
+  backend phải kiểm tra thêm còn hoạt động:
+    SELECT 1 FROM conversation_members
+    WHERE conversation_id = ? AND user_id = ? AND left_at IS NULL;
+  CHECK ((key_version IS NULL) = (nonce IS NULL))
+  Authentication tag (AES-256-GCM): không cần cột riêng. Trong Java, Cipher
+  "AES/GCM/NoPadding" tự nối tag 16 byte vào cuối ciphertext, nên lưu
+  content = Base64(ciphertext || tag) và giải mã bằng nonce + key_version.
+  [Cần thêm trong script SQL] Tìm kiếm chuỗi (chức năng 11f/11g):
+    - MySQL:      FULLTEXT INDEX ft_messages_content (content)
+    - PostgreSQL: GIN index với pg_trgm trên content
+  Tin của nhóm mã hóa server không đọc được -> tìm kiếm trong nhóm đó
+  phải làm ở client sau khi giải mã.
+  '''
+}
+
+
+// ==========================================
+// 6. MESSAGE DELETIONS
+// Ẩn từng tin nhắn khỏi lịch sử của riêng 1 user
+// ==========================================
+
+Table message_deletions {
+  message_id bigint [not null]
+  user_id int [not null, ref: > users.user_id]
+
+  deleted_at timestamp [not null, default: `now()`]
+
+  indexes {
+    (message_id, user_id) [pk]
+    (user_id, deleted_at)
+  }
+}
+
+
+// ==========================================
+// 7. FRIENDSHIPS
+// Mỗi tình bạn lưu 1 dòng, luôn có user_low_id < user_high_id
+// ==========================================
+
+Table friendships {
+  user_low_id int [not null, ref: > users.user_id]
+  user_high_id int [not null, ref: > users.user_id]
+
+  created_at timestamp [not null, default: `now()`]
+
+  indexes {
+    (user_low_id, user_high_id) [pk]   // đã phủ luôn truy vấn theo user_low_id
+    (user_high_id)
+    // [REMOVED] index (user_low_id) của v1 vì trùng tiền tố với PK
+  }
+
+  Note: '''
+  CHECK (user_low_id < user_high_id)
+  Gợi ý tạo VIEW để query đơn giản (danh sách bạn, đếm bạn, bạn của bạn):
+    CREATE VIEW friend_edges AS
+      SELECT user_low_id AS user_id, user_high_id AS friend_id FROM friendships
+      UNION ALL
+      SELECT user_high_id, user_low_id FROM friendships;
+  '''
+}
+
+
+// ==========================================
+// 8. FRIEND REQUESTS
+// ==========================================
+
+Table friend_requests {
+  request_id int [pk, increment]
+
+  sender_id int [not null, ref: > users.user_id]
+  receiver_id int [not null, ref: > users.user_id]
+
+  status friend_request_status [not null, default: 'PENDING']
+
+  created_at timestamp [not null, default: `now()`]
+  responded_at timestamp
+
+  indexes {
+    (sender_id, receiver_id) [unique]
+    (receiver_id, status, created_at)
+    (sender_id, status)
+  }
+
+  Note: '''
+  CHECK (sender_id <> receiver_id)
+  Mỗi cặp (sender, receiver) chỉ có 1 dòng, nên gửi lại lời mời sau khi
+  bị từ chối / sau khi hủy kết bạn phải UPDATE dòng cũ:
+    status = 'PENDING', created_at = now(), responded_at = NULL.
+  Trước khi gửi phải kiểm tra:
+    - user_blocks (bị chặn thì không được gửi),
+    - chiều ngược lại (receiver đã gửi cho sender -> nên tự đồng ý),
+    - hai người đã là bạn trong friendships.
+  Khi ACCEPTED: INSERT friendships (LEAST, GREATEST) trong cùng transaction.
+  '''
+}
+
+
+// ==========================================
+// 9. USER BLOCKS
+// ==========================================
+
+Table user_blocks {
+  blocker_user_id int [not null, ref: > users.user_id]
+  blocked_user_id int [not null, ref: > users.user_id]
+
+  created_at timestamp [not null, default: `now()`]
+
+  indexes {
+    (blocker_user_id, blocked_user_id) [pk]
+    (blocked_user_id)
+  }
+
+  Note: '''
+  CHECK (blocker_user_id <> blocked_user_id)
+  Block = trong 1 transaction: INSERT user_blocks + DELETE friendships
+  + xóa/đóng friend_requests giữa hai người.
+  Tìm người: loại những user mà blocked_user_id = người đang tìm
+  (tức những người đã block mình).
+  '''
+}
+
+
+// ==========================================
+// 10. SPAM REPORTS
+// ==========================================
+
+Table spam_reports {
+  report_id int [pk, increment]
+
+  reporter_user_id int [not null, ref: > users.user_id]
+  reported_user_id int [not null, ref: > users.user_id]
+
+  related_message_id bigint
+
+  reason text
+  status report_status [not null, default: 'OPEN']
+
+  created_at timestamp [not null, default: `now()`]
+
+  handled_by_user_id int [ref: > users.user_id]
+  handled_at timestamp
+
+  indexes {
+    (created_at)
+    (reported_user_id, created_at)
+    (reporter_user_id, created_at)
+    (status, created_at)
+  }
+
+  Note: '''
+  CHECK (reporter_user_id <> reported_user_id)
+  Admin khóa tài khoản từ báo cáo: UPDATE users.account_status = 'LOCKED'
+  + UPDATE report (status = 'REVIEWED', handled_by_user_id, handled_at).
+  '''
+}
+
+
+// ==========================================
+// 11. CONVERSATION MEMBER KEYS
+// Phân phối khóa nhóm mã hóa: khóa AES của nhóm (theo key_version)
+// được mã hóa bằng public_key của từng thành viên.
+// ==========================================
+
+Table conversation_member_keys {
+  conversation_id int [not null]
+  user_id int [not null]
+  key_version int [not null]
+
+  encrypted_group_key text [not null]
+  created_at timestamp [not null, default: `now()`]
+
+  indexes {
+    (conversation_id, user_id, key_version) [pk]
+  }
+
+  Note: '''
+  Thành viên mới: tạo dòng cho key_version hiện hành (không cấp khóa cũ
+  nếu muốn họ không đọc được tin trước khi tham gia).
+  Xóa thành viên: current_key_version + 1, sinh khóa mới và mã hóa lại
+  cho các thành viên còn lại (người bị xóa không có khóa mới).
+  '''
+}
+
+
+// ==========================================
+// RELATIONSHIPS (khóa ngoại ghép / có hành động ON DELETE)
+// ==========================================
+
+// [CHANGED] người gửi phải là thành viên của cuộc trò chuyện
+Ref: messages.(conversation_id, sender_id) > conversation_members.(conversation_id, user_id)
+
+Ref: message_deletions.message_id > messages.message_id [delete: cascade]
+
+Ref: spam_reports.related_message_id > messages.message_id [delete: set null]
+
+Ref: conversation_member_keys.(conversation_id, user_id) > conversation_members.(conversation_id, user_id) [delete: cascade]
+
+
+// ==========================================
+// GỢI Ý TRUY VẤN QUAN TRỌNG
+// ==========================================
+//
+// Lịch sử chat của user :u trong conversation :c
+//   SELECT m.* FROM messages m
+//   JOIN conversation_members cm
+//        ON cm.conversation_id = m.conversation_id AND cm.user_id = :u
+//   WHERE m.conversation_id = :c
+//     AND m.sent_at >= cm.joined_at   -- chính sách: không thấy tin trước khi vào nhóm
+//     AND (cm.left_at IS NULL OR m.sent_at <= cm.left_at)
+//     AND (cm.history_cleared_at IS NULL OR m.sent_at > cm.history_cleared_at)
+//     AND NOT EXISTS (SELECT 1 FROM message_deletions d
+//                     WHERE d.message_id = m.message_id AND d.user_id = :u)
+//   ORDER BY m.message_id;
+//   -- "Di chuyển đến đoạn chat tìm thấy": lấy trang tin nhắn quanh message_id đó.
+//
+// Số lượng hoạt động của user trong khoảng [t1, t2):
+//   - mở ứng dụng : COUNT(user_sessions WHERE login_at in [t1,t2))
+//   - chat với bao nhiêu người : COUNT(DISTINCT conversation_id) của messages do user gửi
+//                                 trong khoảng, join conversations.type = 'DIRECT'
+//   - chat bao nhiêu nhóm      : tương tự với type = 'GROUP'
+//
+// Biểu đồ người hoạt động theo năm (mỗi tháng):
+//   COUNT(DISTINCT user_id) FROM user_sessions
+//   WHERE login_at >= 'Y-01-01' AND login_at < 'Y+1-01-01' GROUP BY tháng
