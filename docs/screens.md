@@ -6,10 +6,13 @@
 
 ## Bảng theo dõi tiến độ màn hình Swing
 
-| STT | Tên màn hình | Phân hệ (Module) | Lớp giao diện (JPanel) | Lớp Demo kiểm thử | Người phụ trách | Trạng thái | Ghi chú |
+| STT | Tên màn hình | Phân hệ (Module) | Lớp giao diện (JPanel/JFrame) | Lớp Demo kiểm thử | Người phụ trách | Trạng thái | Ghi chú |
 | :---: | :--- | :--- | :--- | :--- | :--- | :---: | :--- |
-| 1 | **Quản lý người dùng** | `client-admin` | `edu.hcmus.chat.admin.ui.UserManagementPanel` | `edu.hcmus.chat.admin.ui.UserManagementPanelDemo` | **Thành viên A** (Quản trị) | Đã dựng khung (Scaffolded) | Khung bố cục chuẩn, tích hợp sẵn dữ liệu mẫu trong `DummyAdminData` |
-| 2 | **Khung chat chính** | `client-user` | `edu.hcmus.chat.user.ui.ChatMainPanel` | `edu.hcmus.chat.user.ui.ChatMainPanelDemo` | **Thành viên B** (Người dùng) | Đã dựng khung (Scaffolded) | Khung bố cục chuẩn, tích hợp sẵn dữ liệu mẫu trong `DummyUserData` |
+| 1 | **Quản lý người dùng** | `client-admin` | `edu.hcmus.chat.admin.ui.UserManagementPanel` | `edu.hcmus.chat.admin.ui.UserManagementPanelDemo` | **Thành viên A** (Quản trị) | Khung giao diện (Scaffolded) | Chờ Thành viên A hoàn thiện các nút chức năng |
+| 2 | **Xác thực (Đăng nhập / Đăng ký / Quên MK)** | `client-user` | `edu.hcmus.chat.user.auth.AuthFrame` | `edu.hcmus.chat.user.auth.AuthFrameDemo` | **Thành viên B** (Người dùng) | **Hoàn thành UI (100%)** | CardLayout 3 view: Đăng nhập, Đăng ký, Quên mật khẩu ngẫu nhiên |
+| 3 | **Khung chat chính** | `client-user` | `edu.hcmus.chat.user.ui.ChatMainPanel` | `edu.hcmus.chat.user.ui.ChatMainPanelDemo` | **Thành viên B** (Người dùng) | **Hoàn thành UI (100%)** | 100% Java Swing (Zero HTML/CSS), bong bóng chat, Seen/Unseen |
+| 4 | **Quản lý bạn bè & Lời mời** | `client-user` | `edu.hcmus.chat.user.ui.FriendManagementPanel` | `edu.hcmus.chat.user.ui.FriendManagementPanelDemo` | **Thành viên B** (Người dùng) | **Hoàn thành UI (100%)** | Tab Bạn bè (Online/Offline, Block) & Tab Lời mời (Đồng ý/Từ chối) |
+| 5 | **Tạo nhóm trò chuyện** | `client-user` | `edu.hcmus.chat.user.ui.CreateGroupDialog` | `edu.hcmus.chat.user.ui.CreateGroupDialogDemo` | **Thành viên B** (Người dùng) | **Hoàn thành UI (100%)** | Dialog chọn tối thiểu 1 bạn bè có checkbox tick chọn |
 
 ---
 
