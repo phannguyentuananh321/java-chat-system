@@ -14,6 +14,10 @@
 | **3** | **TCP Socket thuần** | Giao tiếp mạng giữa Client và Server sử dụng trực tiếp `java.net.Socket` và `java.net.ServerSocket` (TCP Stream thuần). Nghiêm cấm sử dụng WebSocket, STOMP, RESTful API/HTTP làm kênh giao tiếp chính. |
 | **4** | **Phân định Backend** | Backend viết bằng Java. Khi mở rộng sang Phiên bản 2 sẽ dùng Spring Boot CHỈ cho server dạng không web (`spring.main.web-application-type=none`). **Tuyệt đối KHÔNG tạo module server ở giai đoạn hiện tại (Phiên bản 1 - Dựng giao diện).** |
 | **5** | **Client độc lập** | Cả hai phân hệ client (`client-admin` và `client-user`) là ứng dụng Java Swing thuần, chạy độc lập, không nhúng Spring Boot. |
+| **6** | **Mô hình 3 lớp (3 Layers)** | Toàn bộ dự án phải tuân thủ kiến trúc 3 lớp rõ ràng: **Presentation Layer** (Giao diện UI), **Business Logic Layer** (Nghiệp vụ - Service), **Data Access Layer** (Truy cập dữ liệu - DAO). Tuyệt đối không viết dồn hết code vào hàm `main` hay viết trực tiếp code CSDL trong giao diện. |
+| **7** | **Quy chuẩn JDBC & Transaction** | Thao tác CSDL tuân thủ chuẩn JDBC: Nạp Driver, lấy Connection, tạo `PreparedStatement`. Với các tác vụ liên quan nhiều bảng bắt buộc sử dụng **Transaction (`commit` và `rollback`)** để đảm bảo toàn vẹn dữ liệu. |
+| **8** | **Bảo mật cấu hình** | Tuyệt đối **không hardcode** username, password, URL CSDL, hay IP server trong mã nguồn Java. Bắt buộc nạp từ file cấu hình bên ngoài (`config.properties`). |
+| **9** | **Đóng gói file .jar** | Dự án phải được đóng gói thành các file Fat JAR độc lập (`admin.jar`, `user.jar`, sau này là `server.jar`) chạy được trực tiếp qua lệnh `java -jar`. |
 
 ---
 
