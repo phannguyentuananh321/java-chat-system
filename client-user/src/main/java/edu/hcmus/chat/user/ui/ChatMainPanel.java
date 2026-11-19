@@ -13,8 +13,6 @@ import javax.swing.border.CompoundBorder;
 import javax.swing.border.EmptyBorder;
 import javax.swing.border.LineBorder;
 import java.awt.*;
-import java.time.LocalTime;
-import java.time.format.DateTimeFormatter;
 import java.util.List;
 
 /**
@@ -50,7 +48,7 @@ public class ChatMainPanel extends JPanel {
         setLayout(new BorderLayout());
         setBackground(Theme.BG_MAIN);
 
-        // 1. Phân vùng bên trái (WEST): Chiều rộng cố định 320px
+        // 1. Phân vùng bên trái (WEST): Chiều rộng 340px
         add(createWestSidebar(), BorderLayout.WEST);
 
         // 2. Phân vùng ở giữa & dưới: Khung chat chính
@@ -59,7 +57,7 @@ public class ChatMainPanel extends JPanel {
 
     private JPanel createWestSidebar() {
         JPanel sidebar = new JPanel(new BorderLayout(0, 10));
-        sidebar.setPreferredSize(new Dimension(320, 0));
+        sidebar.setPreferredSize(new Dimension(340, 0));
         sidebar.setBackground(Theme.BG_SURFACE);
         sidebar.setBorder(new CompoundBorder(
                 new LineBorder(Theme.BORDER_COLOR, 1, false),
@@ -74,11 +72,11 @@ public class ChatMainPanel extends JPanel {
         appTitle.setFont(Theme.FONT_TITLE);
         appTitle.setForeground(Theme.TEXT_DARK);
 
-        JPanel headerButtons = new JPanel(new FlowLayout(FlowLayout.RIGHT, 4, 0));
+        JPanel headerButtons = new JPanel(new FlowLayout(FlowLayout.RIGHT, 6, 0));
         headerButtons.setOpaque(false);
 
         JButton btnNewGroup = new JButton("+ Nhóm");
-        btnNewGroup.setFont(Theme.FONT_SMALL);
+        btnNewGroup.setFont(Theme.FONT_REGULAR);
         btnNewGroup.setFocusPainted(false);
         btnNewGroup.addActionListener(e -> {
             Frame topFrame = (Frame) SwingUtilities.getWindowAncestor(this);
@@ -89,8 +87,8 @@ public class ChatMainPanel extends JPanel {
             }
         });
 
-        JButton btnFriends = new JButton("👥 Bạn bè");
-        btnFriends.setFont(Theme.FONT_SMALL);
+        JButton btnFriends = new JButton("Bạn bè");
+        btnFriends.setFont(Theme.FONT_REGULAR);
         btnFriends.setFocusPainted(false);
         btnFriends.addActionListener(e -> {
             JFrame friendFrame = new JFrame("Quản lý bạn bè & Lời mời kết bạn");
@@ -217,7 +215,10 @@ public class ChatMainPanel extends JPanel {
         this.currentActiveContact = contact;
         activeChatTitleLabel.setText(contact.name());
 
-        if (contact.isOnline()) {
+        if (contact.isGroup()) {
+            activeChatStatusLabel.setText("Nhóm trò chuyện • 4 thành viên");
+            activeChatStatusLabel.setForeground(Theme.PRIMARY_COLOR);
+        } else if (contact.isOnline()) {
             activeChatStatusLabel.setText("● Đang hoạt động");
             activeChatStatusLabel.setForeground(Theme.SUCCESS_COLOR);
         } else {
@@ -225,7 +226,7 @@ public class ChatMainPanel extends JPanel {
             activeChatStatusLabel.setForeground(Theme.TEXT_MUTED);
         }
 
-        // Tải danh sách bong bóng tin nhắn (100% Java Swing thuần)
+        // Tải danh sách bong bóng tin nhắn riêng cho cuộc trò chuyện này
         messageListContainer.removeAll();
         List<DummyMessage> messages = chatService.getMessages(contact.conversationId());
         for (DummyMessage msg : messages) {
@@ -254,27 +255,11 @@ public class ChatMainPanel extends JPanel {
             return;
         }
 
-        String currentTime = LocalTime.now().format(DateTimeFormatter.ofPattern("HH:mm"));
-
-        // Thêm bong bóng tin nhắn của mình ngay lập tức (Thời gian thực)
-        ChatBubblePanel bubble = new ChatBubblePanel(
-                "Tôi",
-                content,
-                currentTime,
-                true
-        );
-        messageListContainer.add(bubble);
-        messageListContainer.revalidate();
-        messageListContainer.repaint();
-
-        // Gửi qua Service
+        // Gửi qua Service để lưu vào bộ nhớ phiên của hội thoại này
         chatService.sendMessage(currentActiveContact.conversationId(), content);
         messageInputField.setText("");
 
-        // Cuộn xuống đáy
-        SwingUtilities.invokeLater(() -> {
-            JScrollBar vertical = messageScrollPane.getVerticalScrollBar();
-            vertical.setValue(vertical.getMaximum());
-        });
+        // Tải lại tin nhắn của cuộc trò chuyện đang chọn
+        selectConversation(currentActiveContact);
     }
 }

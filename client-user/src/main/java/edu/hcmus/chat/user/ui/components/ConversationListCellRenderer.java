@@ -22,16 +22,16 @@ public class ConversationListCellRenderer extends JPanel implements ListCellRend
     private final JLabel unreadBadge = new JLabel();
 
     public ConversationListCellRenderer() {
-        setLayout(new BorderLayout(10, 0));
-        setBorder(new EmptyBorder(8, 10, 8, 10));
+        setLayout(new BorderLayout(8, 0));
+        setBorder(new EmptyBorder(8, 8, 8, 8));
         setOpaque(true);
 
-        // 1. Avatar tròn bên trái
-        avatarLabel.setFont(Theme.FONT_BOLD);
+        // 1. Avatar tròn bên trái (40x40)
+        avatarLabel.setFont(new Font("Segoe UI", Font.BOLD, 16));
         avatarLabel.setForeground(Color.WHITE);
         avatarLabel.setOpaque(true);
         avatarLabel.setHorizontalAlignment(SwingConstants.CENTER);
-        avatarLabel.setPreferredSize(new Dimension(42, 42));
+        avatarLabel.setPreferredSize(new Dimension(40, 40));
 
         JPanel avatarWrapper = new JPanel(new BorderLayout());
         avatarWrapper.setOpaque(false);
@@ -47,35 +47,37 @@ public class ConversationListCellRenderer extends JPanel implements ListCellRend
         messageLabel.setAlignmentX(Component.LEFT_ALIGNMENT);
 
         centerPanel.add(nameLabel);
-        centerPanel.add(Box.createVerticalStrut(4));
+        centerPanel.add(Box.createVerticalStrut(3));
         centerPanel.add(messageLabel);
         add(centerPanel, BorderLayout.CENTER);
 
-        // 3. Khu vực bên phải: Thời gian & Trạng thái Online / Huy hiệu chưa đọc
+        // 3. Khu vực bên phải: Thời gian & Huy hiệu chưa đọc
         JPanel rightPanel = new JPanel();
         rightPanel.setLayout(new BoxLayout(rightPanel, BoxLayout.Y_AXIS));
         rightPanel.setOpaque(false);
+        rightPanel.setPreferredSize(new Dimension(65, 40));
 
         timeLabel.setFont(Theme.FONT_SMALL);
         timeLabel.setAlignmentX(Component.RIGHT_ALIGNMENT);
+        timeLabel.setHorizontalAlignment(SwingConstants.RIGHT);
 
-        JPanel badgeWrapper = new JPanel(new FlowLayout(FlowLayout.RIGHT, 4, 0));
+        JPanel badgeWrapper = new JPanel(new FlowLayout(FlowLayout.RIGHT, 3, 0));
         badgeWrapper.setOpaque(false);
         badgeWrapper.setAlignmentX(Component.RIGHT_ALIGNMENT);
 
-        statusDotLabel.setFont(new Font("Segoe UI", Font.BOLD, 12));
+        statusDotLabel.setFont(new Font("Segoe UI", Font.BOLD, 10));
 
         unreadBadge.setFont(Theme.FONT_SMALL);
         unreadBadge.setForeground(Color.WHITE);
         unreadBadge.setBackground(Theme.PRIMARY_COLOR);
         unreadBadge.setOpaque(true);
-        unreadBadge.setBorder(new EmptyBorder(2, 6, 2, 6));
+        unreadBadge.setBorder(new EmptyBorder(1, 5, 1, 5));
 
         badgeWrapper.add(statusDotLabel);
         badgeWrapper.add(unreadBadge);
 
         rightPanel.add(timeLabel);
-        rightPanel.add(Box.createVerticalStrut(4));
+        rightPanel.add(Box.createVerticalStrut(3));
         rightPanel.add(badgeWrapper);
         add(rightPanel, BorderLayout.EAST);
     }
@@ -105,7 +107,7 @@ public class ConversationListCellRenderer extends JPanel implements ListCellRend
             statusDotLabel.setForeground(Theme.SUCCESS_COLOR);
             statusDotLabel.setToolTipText("Trực tuyến");
         } else {
-            statusDotLabel.setForeground(new Color(180, 185, 190));
+            statusDotLabel.setForeground(new Color(185, 190, 195));
             statusDotLabel.setToolTipText("Ngoại tuyến");
         }
 
@@ -114,26 +116,25 @@ public class ConversationListCellRenderer extends JPanel implements ListCellRend
         // =====================================================================
         if (contact.unreadCount() > 0) {
             // UNSEEN: Tên và tin nhắn xem trước TÔ ĐẬM (BOLD), hiện số tin chưa đọc
-            nameLabel.setFont(Theme.FONT_TITLE);
+            nameLabel.setFont(new Font("Segoe UI", Font.BOLD, 13));
             nameLabel.setText(contact.name());
-            nameLabel.setFont(new Font("Segoe UI", Font.BOLD, 14));
             nameLabel.setForeground(Theme.TEXT_DARK);
 
-            messageLabel.setFont(Theme.FONT_BOLD);
+            messageLabel.setFont(new Font("Segoe UI", Font.BOLD, 12));
             messageLabel.setForeground(Theme.TEXT_DARK);
-            messageLabel.setText(truncate(contact.lastMessage(), 32));
+            messageLabel.setText(truncate(contact.lastMessage(), 24));
 
             unreadBadge.setText(String.valueOf(contact.unreadCount()));
             unreadBadge.setVisible(true);
         } else {
             // SEEN: Chữ thường (PLAIN), tin nhắn màu xám mờ (MUTED)
-            nameLabel.setFont(new Font("Segoe UI", Font.PLAIN, 14));
+            nameLabel.setFont(new Font("Segoe UI", Font.PLAIN, 13));
             nameLabel.setText(contact.name());
             nameLabel.setForeground(Theme.TEXT_DARK);
 
             messageLabel.setFont(Theme.FONT_REGULAR);
             messageLabel.setForeground(Theme.TEXT_MUTED);
-            messageLabel.setText(truncate(contact.lastMessage(), 32));
+            messageLabel.setText(truncate(contact.lastMessage(), 24));
 
             unreadBadge.setVisible(false);
         }
