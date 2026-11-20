@@ -2,6 +2,7 @@ package edu.hcmus.chat.admin.ui;
 
 import edu.hcmus.chat.common.model.AccountStatus;
 import edu.hcmus.chat.common.model.GenderType;
+import edu.hcmus.chat.common.model.MemberRole;
 import edu.hcmus.chat.common.model.User;
 import edu.hcmus.chat.common.model.UserRole;
 
@@ -32,8 +33,32 @@ public final class DummyAdminData {
             LocalDateTime logoutAt
     ) {}
 
+    /**
+     * A group conversation (conversation_type = GROUP), with the creator's username.
+     */
+    public record GroupRecord(
+            int conversationId,
+            String title,
+            String createdByUsername,
+            LocalDateTime createdAt
+    ) {}
+
+    /**
+     * One row of conversation_members for a group, joined with the user's names.
+     */
+    public record GroupMemberRecord(
+            int conversationId,
+            int userId,
+            String username,
+            String fullName,
+            MemberRole role,
+            LocalDateTime joinedAt
+    ) {}
+
     private static final List<User> DUMMY_USERS = new ArrayList<>();
     private static final List<LoginRecord> DUMMY_LOGINS = new ArrayList<>();
+    private static final List<GroupRecord> DUMMY_GROUPS = new ArrayList<>();
+    private static final List<GroupMemberRecord> DUMMY_GROUP_MEMBERS = new ArrayList<>();
 
     /**
      * Accepted friendships as {userId, userId} pairs, the same shape as the friendships table.
@@ -97,11 +122,45 @@ public final class DummyAdminData {
         addLogin(2, LocalDateTime.of(2026, 11, 16, 10, 0), LocalDateTime.of(2026, 11, 16, 12, 30));
         addLogin(8, LocalDateTime.of(2026, 11, 15, 20, 12), LocalDateTime.of(2026, 11, 15, 21, 40));
         addLogin(5, LocalDateTime.of(2026, 11, 3, 9, 10), LocalDateTime.of(2026, 11, 3, 9, 25));
+
+        // Groups, then their members. The creator joins as group admin.
+        addGroup(101, "Nhóm Đồ Án Java HCMUS", 2, LocalDateTime.of(2026, 10, 1, 9, 0));
+        addGroupMember(101, 3, MemberRole.ADMIN, LocalDateTime.of(2026, 10, 1, 9, 0));
+        addGroupMember(101, 4, MemberRole.MEMBER, LocalDateTime.of(2026, 10, 1, 9, 5));
+        addGroupMember(101, 6, MemberRole.MEMBER, LocalDateTime.of(2026, 10, 2, 14, 20));
+
+        addGroup(102, "Lớp 24KTPM2", 3, LocalDateTime.of(2025, 9, 5, 7, 30));
+        addGroupMember(102, 2, MemberRole.MEMBER, LocalDateTime.of(2025, 9, 5, 7, 31));
+        addGroupMember(102, 4, MemberRole.MEMBER, LocalDateTime.of(2025, 9, 5, 7, 31));
+        addGroupMember(102, 7, MemberRole.MEMBER, LocalDateTime.of(2025, 9, 6, 10, 0));
+        addGroupMember(102, 8, MemberRole.MEMBER, LocalDateTime.of(2025, 12, 1, 8, 0));
+        addGroupMember(102, 9, MemberRole.MEMBER, LocalDateTime.of(2026, 2, 20, 19, 45));
+
+        addGroup(103, "CLB Cầu lông", 6, LocalDateTime.of(2026, 3, 12, 18, 0));
+        addGroupMember(103, 9, MemberRole.MEMBER, LocalDateTime.of(2026, 3, 12, 18, 1));
+        addGroupMember(103, 10, MemberRole.MEMBER, LocalDateTime.of(2026, 5, 15, 17, 30));
+
+        addGroup(104, "Ôn thi cuối kỳ", 7, LocalDateTime.of(2026, 11, 10, 20, 15));
+        addGroupMember(104, 10, MemberRole.ADMIN, LocalDateTime.of(2026, 11, 10, 20, 15));
+        addGroupMember(104, 3, MemberRole.MEMBER, LocalDateTime.of(2026, 11, 10, 20, 16));
+        addGroupMember(104, 11, MemberRole.MEMBER, LocalDateTime.of(2026, 11, 11, 8, 40));
     }
 
     private static void addLogin(int userId, LocalDateTime loginAt, LocalDateTime logoutAt) {
         User user = findUserById(userId);
         DUMMY_LOGINS.add(new LoginRecord(userId, user.username(), user.fullName(), loginAt, logoutAt));
+    }
+
+    private static void addGroup(int conversationId, String title, int createdByUserId, LocalDateTime createdAt) {
+        User creator = findUserById(createdByUserId);
+        DUMMY_GROUPS.add(new GroupRecord(conversationId, title, creator.username(), createdAt));
+        addGroupMember(conversationId, createdByUserId, MemberRole.ADMIN, createdAt);
+    }
+
+    private static void addGroupMember(int conversationId, int userId, MemberRole role, LocalDateTime joinedAt) {
+        User user = findUserById(userId);
+        DUMMY_GROUP_MEMBERS.add(new GroupMemberRecord(conversationId, userId, user.username(), user.fullName(),
+                role, joinedAt));
     }
 
     private DummyAdminData() {
@@ -148,6 +207,23 @@ public final class DummyAdminData {
         for (LoginRecord login : DUMMY_LOGINS) {
             if (login.userId() == userId) {
                 result.add(login);
+            }
+        }
+        return result;
+    }
+
+    public static List<GroupRecord> getGroups() {
+        return Collections.unmodifiableList(DUMMY_GROUPS);
+    }
+
+    /**
+     * Members of one group, group admins included (check the role to tell them apart).
+     */
+    public static List<GroupMemberRecord> getGroupMembers(int conversationId) {
+        List<GroupMemberRecord> result = new ArrayList<>();
+        for (GroupMemberRecord member : DUMMY_GROUP_MEMBERS) {
+            if (member.conversationId() == conversationId) {
+                result.add(member);
             }
         }
         return result;
