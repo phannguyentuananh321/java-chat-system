@@ -3,6 +3,7 @@ package edu.hcmus.chat.admin.ui;
 import edu.hcmus.chat.common.model.AccountStatus;
 import edu.hcmus.chat.common.model.GenderType;
 import edu.hcmus.chat.common.model.MemberRole;
+import edu.hcmus.chat.common.model.ReportStatus;
 import edu.hcmus.chat.common.model.User;
 import edu.hcmus.chat.common.model.UserRole;
 
@@ -55,10 +56,24 @@ public final class DummyAdminData {
             LocalDateTime joinedAt
     ) {}
 
+    /**
+     * One row of spam_reports, with both usernames filled in.
+     */
+    public record SpamReportRecord(
+            int reportId,
+            LocalDateTime createdAt,
+            String reporterUsername,
+            int reportedUserId,
+            String reportedUsername,
+            String reason,
+            ReportStatus status
+    ) {}
+
     private static final List<User> DUMMY_USERS = new ArrayList<>();
     private static final List<LoginRecord> DUMMY_LOGINS = new ArrayList<>();
     private static final List<GroupRecord> DUMMY_GROUPS = new ArrayList<>();
     private static final List<GroupMemberRecord> DUMMY_GROUP_MEMBERS = new ArrayList<>();
+    private static final List<SpamReportRecord> DUMMY_SPAM_REPORTS = new ArrayList<>();
 
     /**
      * Accepted friendships as {userId, userId} pairs, the same shape as the friendships table.
@@ -144,6 +159,24 @@ public final class DummyAdminData {
         addGroupMember(104, 10, MemberRole.ADMIN, LocalDateTime.of(2026, 11, 10, 20, 15));
         addGroupMember(104, 3, MemberRole.MEMBER, LocalDateTime.of(2026, 11, 10, 20, 16));
         addGroupMember(104, 11, MemberRole.MEMBER, LocalDateTime.of(2026, 11, 11, 8, 40));
+
+        // Spam reports, newest first
+        addSpamReport(5, LocalDateTime.of(2026, 11, 18, 21, 15), 3, 12,
+                "Gửi liên tục đường link quảng cáo", ReportStatus.OPEN);
+        addSpamReport(4, LocalDateTime.of(2026, 11, 17, 9, 40), 2, 12,
+                "Tin nhắn rác lặp lại nhiều lần trong nhóm", ReportStatus.OPEN);
+        addSpamReport(3, LocalDateTime.of(2026, 11, 12, 14, 5), 7, 8,
+                "Dùng ngôn từ không phù hợp", ReportStatus.REVIEWED);
+        addSpamReport(2, LocalDateTime.of(2026, 11, 5, 20, 30), 4, 5,
+                "Mạo danh người khác để mượn tiền", ReportStatus.REVIEWED);
+        addSpamReport(1, LocalDateTime.of(2026, 10, 28, 8, 12), 9, 10,
+                "Báo cáo nhầm", ReportStatus.DISMISSED);
+    }
+
+    private static void addSpamReport(int reportId, LocalDateTime createdAt, int reporterUserId, int reportedUserId,
+                                      String reason, ReportStatus status) {
+        DUMMY_SPAM_REPORTS.add(new SpamReportRecord(reportId, createdAt, findUserById(reporterUserId).username(),
+                reportedUserId, findUserById(reportedUserId).username(), reason, status));
     }
 
     private static void addLogin(int userId, LocalDateTime loginAt, LocalDateTime logoutAt) {
@@ -227,6 +260,10 @@ public final class DummyAdminData {
             }
         }
         return result;
+    }
+
+    public static List<SpamReportRecord> getSpamReports() {
+        return Collections.unmodifiableList(DUMMY_SPAM_REPORTS);
     }
 
     /**
