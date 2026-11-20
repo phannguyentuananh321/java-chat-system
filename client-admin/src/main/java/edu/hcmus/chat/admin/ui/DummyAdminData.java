@@ -11,7 +11,9 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 
 /**
  * Sample data for the admin screens (V1 has no server or database yet).
@@ -69,8 +71,35 @@ public final class DummyAdminData {
             ReportStatus status
     ) {}
 
+    /**
+     * Friend counts of one user (admin requirement 7).
+     * friendsWithFriendsOfFriends counts each person once, the user himself excluded.
+     */
+    public record FriendCountRecord(
+            int userId,
+            String username,
+            String fullName,
+            LocalDateTime createdAt,
+            int directFriends,
+            int friendsWithFriendsOfFriends
+    ) {}
+
+    /**
+     * Activity of one user inside a time range (admin requirement 8).
+     */
+    public record UserActivityRecord(
+            int userId,
+            String username,
+            String fullName,
+            LocalDateTime createdAt,
+            int appOpens,
+            int chattedWithUsers,
+            int chattedInGroups
+    ) {}
+
     private static final List<User> DUMMY_USERS = new ArrayList<>();
     private static final List<LoginRecord> DUMMY_LOGINS = new ArrayList<>();
+    private static final List<UserActivityRecord> DUMMY_ACTIVITY = new ArrayList<>();
     private static final List<GroupRecord> DUMMY_GROUPS = new ArrayList<>();
     private static final List<GroupMemberRecord> DUMMY_GROUP_MEMBERS = new ArrayList<>();
     private static final List<SpamReportRecord> DUMMY_SPAM_REPORTS = new ArrayList<>();
@@ -81,6 +110,20 @@ public final class DummyAdminData {
     private static final int[][] FRIEND_PAIRS = {
             {2, 3}, {2, 4}, {2, 6}, {3, 4}, {3, 5}, {3, 7},
             {4, 8}, {6, 9}, {7, 10}, {8, 11}, {9, 10}, {11, 12}
+    };
+
+    // Chart numbers, January to December. Hand-written so the charts are readable,
+    // so they don't add up to the 12 users above. 2026 stops at November (today).
+    private static final int[] YEARS = {2026, 2025, 2024};
+    private static final int[][] MONTHLY_REGISTRATIONS = {
+            {12, 16, 21, 19, 24, 28, 23, 26, 31, 27, 9, 0},
+            {8, 11, 15, 13, 17, 20, 18, 16, 25, 22, 19, 14},
+            {3, 5, 8, 6, 9, 12, 10, 7, 14, 11, 9, 6}
+    };
+    private static final int[][] MONTHLY_ACTIVE_USERS = {
+            {165, 170, 182, 190, 205, 214, 208, 220, 245, 251, 236, 0},
+            {75, 80, 92, 101, 110, 118, 115, 120, 140, 152, 160, 158},
+            {10, 15, 22, 27, 33, 41, 46, 50, 62, 68, 72, 70}
     };
 
     static {
@@ -138,6 +181,19 @@ public final class DummyAdminData {
         addLogin(8, LocalDateTime.of(2026, 11, 15, 20, 12), LocalDateTime.of(2026, 11, 15, 21, 40));
         addLogin(5, LocalDateTime.of(2026, 11, 3, 9, 10), LocalDateTime.of(2026, 11, 3, 9, 25));
 
+        // Activity in the sample range: app opens, people chatted with, groups chatted in
+        addActivity(2, 42, 6, 2);
+        addActivity(3, 35, 5, 3);
+        addActivity(4, 18, 3, 2);
+        addActivity(5, 1, 0, 0);
+        addActivity(6, 12, 3, 1);
+        addActivity(7, 27, 4, 2);
+        addActivity(8, 9, 2, 1);
+        addActivity(9, 15, 3, 2);
+        addActivity(10, 11, 2, 2);
+        addActivity(11, 7, 2, 1);
+        addActivity(12, 3, 9, 1);
+
         // Groups, then their members. The creator joins as group admin.
         addGroup(101, "Nhóm Đồ Án Java HCMUS", 2, LocalDateTime.of(2026, 10, 1, 9, 0));
         addGroupMember(101, 3, MemberRole.ADMIN, LocalDateTime.of(2026, 10, 1, 9, 0));
@@ -182,6 +238,12 @@ public final class DummyAdminData {
     private static void addLogin(int userId, LocalDateTime loginAt, LocalDateTime logoutAt) {
         User user = findUserById(userId);
         DUMMY_LOGINS.add(new LoginRecord(userId, user.username(), user.fullName(), loginAt, logoutAt));
+    }
+
+    private static void addActivity(int userId, int appOpens, int chattedWithUsers, int chattedInGroups) {
+        User user = findUserById(userId);
+        DUMMY_ACTIVITY.add(new UserActivityRecord(userId, user.username(), user.fullName(), user.createdAt(),
+                appOpens, chattedWithUsers, chattedInGroups));
     }
 
     private static void addGroup(int conversationId, String title, int createdByUserId, LocalDateTime createdAt) {
@@ -279,5 +341,72 @@ public final class DummyAdminData {
             }
         }
         return friends;
+    }
+
+    /**
+     * Friend counts for every normal user (admins are left out).
+     *
+     * "Including friends of friends" is read as: everyone within two steps, each
+     * counted once. Example: A-B, B-C, A-C gives A two people, not three.
+     * The real version will be a SQL query; this loop is only for the sample data.
+     */
+    public static List<FriendCountRecord> getFriendCounts() {
+        List<FriendCountRecord> result = new ArrayList<>();
+        for (User user : DUMMY_USERS) {
+            if (user.role() == UserRole.ADMIN) {
+                continue;
+            }
+            List<User> friends = getFriendsOf(user.userId());
+
+            Set<Integer> withinTwoSteps = new HashSet<>();
+            for (User friend : friends) {
+                withinTwoSteps.add(friend.userId());
+                for (User friendOfFriend : getFriendsOf(friend.userId())) {
+                    withinTwoSteps.add(friendOfFriend.userId());
+                }
+            }
+            withinTwoSteps.remove(user.userId());
+
+            result.add(new FriendCountRecord(user.userId(), user.username(), user.fullName(), user.createdAt(),
+                    friends.size(), withinTwoSteps.size()));
+        }
+        return result;
+    }
+
+    public static List<UserActivityRecord> getUserActivity() {
+        return Collections.unmodifiableList(DUMMY_ACTIVITY);
+    }
+
+    /**
+     * Years that have chart data, newest first.
+     */
+    public static int[] getChartYears() {
+        return YEARS.clone();
+    }
+
+    /**
+     * New registrations per month of the given year (12 numbers, January first).
+     */
+    public static int[] getMonthlyRegistrations(int year) {
+        return findYearRow(MONTHLY_REGISTRATIONS, year);
+    }
+
+    /**
+     * Users who opened the app at least once, per month of the given year.
+     */
+    public static int[] getMonthlyActiveUsers(int year) {
+        return findYearRow(MONTHLY_ACTIVE_USERS, year);
+    }
+
+    /**
+     * Row i of the table belongs to YEARS[i]. Unknown year gives all zeros.
+     */
+    private static int[] findYearRow(int[][] table, int year) {
+        for (int i = 0; i < YEARS.length; i++) {
+            if (YEARS[i] == year) {
+                return table[i].clone();
+            }
+        }
+        return new int[12];
     }
 }
