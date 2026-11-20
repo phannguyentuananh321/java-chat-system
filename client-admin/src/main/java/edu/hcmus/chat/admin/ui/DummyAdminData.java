@@ -20,7 +20,28 @@ import java.util.List;
  */
 public final class DummyAdminData {
 
+    /**
+     * One row of user_sessions, joined with the user's names.
+     * logoutAt is null while the session is still open.
+     */
+    public record LoginRecord(
+            int userId,
+            String username,
+            String fullName,
+            LocalDateTime loginAt,
+            LocalDateTime logoutAt
+    ) {}
+
     private static final List<User> DUMMY_USERS = new ArrayList<>();
+    private static final List<LoginRecord> DUMMY_LOGINS = new ArrayList<>();
+
+    /**
+     * Accepted friendships as {userId, userId} pairs, the same shape as the friendships table.
+     */
+    private static final int[][] FRIEND_PAIRS = {
+            {2, 3}, {2, 4}, {2, 6}, {3, 4}, {3, 5}, {3, 7},
+            {4, 8}, {6, 9}, {7, 10}, {8, 11}, {9, 10}, {11, 12}
+    };
 
     static {
         DUMMY_USERS.add(newUser(1, "admin", "Quản trị viên hệ thống", "admin@chat.hcmus.edu.vn",
@@ -59,6 +80,28 @@ public final class DummyAdminData {
         DUMMY_USERS.add(newUser(12, "lyvanl", "Lý Văn L", "lvl@gmail.com",
                 "Quận 12, TP.HCM", LocalDate.of(2002, 4, 4), GenderType.MALE,
                 AccountStatus.ACTIVE, UserRole.USER, LocalDateTime.of(2026, 11, 2, 23, 40)));
+
+        // Newest first, the order the login history screen shows them in
+        addLogin(2, LocalDateTime.of(2026, 11, 20, 8, 15), null);
+        addLogin(1, LocalDateTime.of(2026, 11, 20, 7, 58), null);
+        addLogin(7, LocalDateTime.of(2026, 11, 19, 22, 4), LocalDateTime.of(2026, 11, 19, 23, 30));
+        addLogin(3, LocalDateTime.of(2026, 11, 19, 20, 41), LocalDateTime.of(2026, 11, 19, 21, 12));
+        addLogin(12, LocalDateTime.of(2026, 11, 19, 18, 2), LocalDateTime.of(2026, 11, 19, 18, 9));
+        addLogin(4, LocalDateTime.of(2026, 11, 19, 9, 30), LocalDateTime.of(2026, 11, 19, 11, 45));
+        addLogin(2, LocalDateTime.of(2026, 11, 18, 21, 10), LocalDateTime.of(2026, 11, 18, 23, 55));
+        addLogin(10, LocalDateTime.of(2026, 11, 18, 15, 22), LocalDateTime.of(2026, 11, 18, 16, 0));
+        addLogin(6, LocalDateTime.of(2026, 11, 18, 7, 45), LocalDateTime.of(2026, 11, 18, 8, 20));
+        addLogin(9, LocalDateTime.of(2026, 11, 17, 19, 33), LocalDateTime.of(2026, 11, 17, 20, 50));
+        addLogin(3, LocalDateTime.of(2026, 11, 17, 13, 5), LocalDateTime.of(2026, 11, 17, 14, 40));
+        addLogin(11, LocalDateTime.of(2026, 11, 16, 22, 18), LocalDateTime.of(2026, 11, 16, 22, 59));
+        addLogin(2, LocalDateTime.of(2026, 11, 16, 10, 0), LocalDateTime.of(2026, 11, 16, 12, 30));
+        addLogin(8, LocalDateTime.of(2026, 11, 15, 20, 12), LocalDateTime.of(2026, 11, 15, 21, 40));
+        addLogin(5, LocalDateTime.of(2026, 11, 3, 9, 10), LocalDateTime.of(2026, 11, 3, 9, 25));
+    }
+
+    private static void addLogin(int userId, LocalDateTime loginAt, LocalDateTime logoutAt) {
+        User user = findUserById(userId);
+        DUMMY_LOGINS.add(new LoginRecord(userId, user.username(), user.fullName(), loginAt, logoutAt));
     }
 
     private DummyAdminData() {
@@ -91,5 +134,37 @@ public final class DummyAdminData {
             }
         }
         return null;
+    }
+
+    /**
+     * Every login of every user, newest first.
+     */
+    public static List<LoginRecord> getLoginHistory() {
+        return Collections.unmodifiableList(DUMMY_LOGINS);
+    }
+
+    public static List<LoginRecord> getLoginHistoryOf(int userId) {
+        List<LoginRecord> result = new ArrayList<>();
+        for (LoginRecord login : DUMMY_LOGINS) {
+            if (login.userId() == userId) {
+                result.add(login);
+            }
+        }
+        return result;
+    }
+
+    /**
+     * Direct friends only. A pair counts for both sides.
+     */
+    public static List<User> getFriendsOf(int userId) {
+        List<User> friends = new ArrayList<>();
+        for (int[] pair : FRIEND_PAIRS) {
+            if (pair[0] == userId) {
+                friends.add(findUserById(pair[1]));
+            } else if (pair[1] == userId) {
+                friends.add(findUserById(pair[0]));
+            }
+        }
+        return friends;
     }
 }
