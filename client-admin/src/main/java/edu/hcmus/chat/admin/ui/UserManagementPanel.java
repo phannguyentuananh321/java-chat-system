@@ -1,5 +1,8 @@
 package edu.hcmus.chat.admin.ui;
 
+import edu.hcmus.chat.admin.dao.UserSortOrder;
+import edu.hcmus.chat.admin.service.ServiceException;
+import edu.hcmus.chat.admin.service.UserService;
 import edu.hcmus.chat.common.model.AccountStatus;
 import edu.hcmus.chat.common.model.User;
 import edu.hcmus.chat.common.ui.Theme;
@@ -7,11 +10,15 @@ import edu.hcmus.chat.common.ui.Theme;
 import javax.swing.*;
 import javax.swing.table.DefaultTableModel;
 import java.awt.*;
+import java.util.ArrayList;
+import java.util.List;
 
 /**
  * Screen: user management (admin requirement 1).
  * Table of all accounts, with search / status filter / sort on top and the
  * per-user actions at the bottom (add, edit, delete, lock, password, history, friends).
+ *
+ * Presentation layer only: every read and write goes through UserService.
  *
  * Owner: Member A (admin).
  */
@@ -22,13 +29,25 @@ public class UserManagementPanel extends JPanel {
     private static final String[] COLUMNS = {
             "ID", "Tên đăng nhập", "Họ và tên", "Trạng thái", "Giới tính", "Ngày sinh", "Email", "Địa chỉ", "Ngày tạo"
     };
-    private static final int COLUMN_ID = 0;
-    private static final int COLUMN_STATUS = 3;
+
+    private final UserService userService;
 
     private DefaultTableModel userTableModel;
     private JTable userTable;
+    private JTextField searchField;
+    private JComboBox<String> statusComboBox;
+    private JComboBox<String> sortComboBox;
+    private JLabel countLabel;
+
+    // Rows currently in the table, same order, so a selected row maps to a User
+    private List<User> shownUsers = new ArrayList<>();
 
     public UserManagementPanel() {
+        this(new UserService());
+    }
+
+    public UserManagementPanel(UserService userService) {
+        this.userService = userService;
         initUI();
         loadData();
     }
@@ -51,21 +70,31 @@ public class UserManagementPanel extends JPanel {
         AdminUi.setColumnWidths(userTable, 40, 105, 145, 85, 70, 90, 200, 210, 90);
         card.add(AdminUi.createTableScrollPane(userTable), BorderLayout.CENTER);
 
+        countLabel = new JLabel(" ");
+        countLabel.setFont(Theme.FONT_SMALL);
+        countLabel.setForeground(Theme.TEXT_MUTED);
+        card.add(countLabel, BorderLayout.SOUTH);
+
         add(card, BorderLayout.CENTER);
         add(createActionBar(), BorderLayout.SOUTH);
     }
 
     /**
-     * V1: the controls are laid out but not wired yet. Filtering and sorting will be
-     * done by the server query in V2, so there is no point writing it twice here.
+     * Filters are applied by the database query (see UserDao.findUsers).
+     * "Lọc" or Enter in the search box reloads; changing a combo box reloads right away.
      */
     private JPanel createFilterBar() {
         JPanel bar = AdminUi.createFilterBar();
 
-        JTextField searchField = AdminUi.createTextField("Họ tên hoặc tên đăng nhập", 16);
-        JComboBox<String> statusComboBox = AdminUi.createComboBox("Tất cả", "Hoạt động", "Bị khóa");
-        JComboBox<String> sortComboBox = AdminUi.createComboBox("Họ tên (A-Z)", "Ngày tạo (mới nhất)");
+        searchField = AdminUi.createTextField("Họ tên hoặc tên đăng nhập", 16);
+        statusComboBox = AdminUi.createComboBox("Tất cả", "Hoạt động", "Bị khóa");
+        sortComboBox = AdminUi.createComboBox("Họ tên (A-Z)", "Ngày tạo (mới nhất)");
         JButton filterButton = Theme.createPrimaryButton("Lọc");
+
+        searchField.addActionListener(e -> loadData());
+        statusComboBox.addActionListener(e -> loadData());
+        sortComboBox.addActionListener(e -> loadData());
+        filterButton.addActionListener(e -> loadData());
 
         bar.add(AdminUi.createLabel("Tìm kiếm"));
         bar.add(searchField);
@@ -108,11 +137,21 @@ public class UserManagementPanel extends JPanel {
         actionBar.add(leftGroup, BorderLayout.WEST);
         actionBar.add(rightGroup, BorderLayout.EAST);
 
-        addButton.addActionListener(e -> new UserFormDialog(getOwnerWindow(), null).setVisible(true));
+        addButton.addActionListener(e -> {
+            UserFormDialog dialog = new UserFormDialog(getOwnerWindow(), userService, null);
+            dialog.setVisible(true);
+            if (dialog.isSaved()) {
+                loadData();
+            }
+        });
         editButton.addActionListener(e -> {
             User user = getSelectedUser();
             if (user != null) {
-                new UserFormDialog(getOwnerWindow(), user).setVisible(true);
+                UserFormDialog dialog = new UserFormDialog(getOwnerWindow(), userService, user);
+                dialog.setVisible(true);
+                if (dialog.isSaved()) {
+                    loadData();
+                }
             }
         });
         deleteButton.addActionListener(e -> deleteSelectedUser());
@@ -120,44 +159,67 @@ public class UserManagementPanel extends JPanel {
         passwordButton.addActionListener(e -> {
             User user = getSelectedUser();
             if (user != null) {
-                new ChangePasswordDialog(getOwnerWindow(), user).setVisible(true);
+                new ChangePasswordDialog(getOwnerWindow(), userService, user).setVisible(true);
             }
         });
         historyButton.addActionListener(e -> {
             User user = getSelectedUser();
             if (user != null) {
-                new UserDetailDialog(getOwnerWindow(), user, UserDetailDialog.TAB_LOGIN_HISTORY).setVisible(true);
+                new UserDetailDialog(getOwnerWindow(), userService, user, UserDetailDialog.TAB_LOGIN_HISTORY)
+                        .setVisible(true);
             }
         });
         friendsButton.addActionListener(e -> {
             User user = getSelectedUser();
             if (user != null) {
-                new UserDetailDialog(getOwnerWindow(), user, UserDetailDialog.TAB_FRIENDS).setVisible(true);
+                new UserDetailDialog(getOwnerWindow(), userService, user, UserDetailDialog.TAB_FRIENDS)
+                        .setVisible(true);
             }
         });
 
         return actionBar;
     }
 
+    /**
+     * Reads the filter controls, asks the service, and refills the table.
+     */
     private void loadData() {
+        AccountStatus status = switch (statusComboBox.getSelectedIndex()) {
+            case 1 -> AccountStatus.ACTIVE;
+            case 2 -> AccountStatus.LOCKED;
+            default -> null;
+        };
+        UserSortOrder sortOrder = sortComboBox.getSelectedIndex() == 1
+                ? UserSortOrder.CREATED_NEWEST
+                : UserSortOrder.FULL_NAME;
+
         userTableModel.setRowCount(0);
-        for (User user : DummyAdminData.getDummyUsers()) {
+        shownUsers = new ArrayList<>();
+        try {
+            shownUsers = userService.getUsers(searchField.getText(), status, sortOrder);
+        } catch (ServiceException e) {
+            countLabel.setText("Không tải được danh sách người dùng.");
+            showError(e);
+            return;
+        }
+
+        for (User user : shownUsers) {
             userTableModel.addRow(new Object[]{
                     user.userId(),
                     user.username(),
                     user.fullName(),
                     AdminFormat.accountStatus(user.accountStatus()),
-                    AdminFormat.gender(user.gender()),
+                    user.gender() == null ? "" : AdminFormat.gender(user.gender()),
                     AdminFormat.date(user.dateOfBirth()),
                     user.email(),
-                    user.address(),
+                    user.address() == null ? "" : user.address(),
                     AdminFormat.date(user.createdAt())
             });
         }
+        countLabel.setText(shownUsers.size() + " người dùng");
     }
 
     /**
-     * Reads the id from the selected row and looks the user up.
      * Shows a warning and returns null when nothing is selected.
      */
     private User getSelectedUser() {
@@ -167,11 +229,8 @@ public class UserManagementPanel extends JPanel {
                     "Thông báo", JOptionPane.WARNING_MESSAGE);
             return null;
         }
-        int userId = (int) userTableModel.getValueAt(row, COLUMN_ID);
-        return DummyAdminData.findUserById(userId);
+        return shownUsers.get(row);
     }
-
-    // V1: delete and lock only change the table on screen, the dummy list stays as is.
 
     private void deleteSelectedUser() {
         User user = getSelectedUser();
@@ -179,10 +238,16 @@ public class UserManagementPanel extends JPanel {
             return;
         }
         int answer = JOptionPane.showConfirmDialog(this,
-                "Xóa tài khoản \"" + user.username() + "\"? Thao tác này không thể hoàn tác.",
+                "Xóa tài khoản \"" + user.username() + "\"? Người dùng sẽ không thể đăng nhập nữa.",
                 "Xác nhận xóa", JOptionPane.YES_NO_OPTION, JOptionPane.WARNING_MESSAGE);
-        if (answer == JOptionPane.YES_OPTION) {
-            userTableModel.removeRow(userTable.getSelectedRow());
+        if (answer != JOptionPane.YES_OPTION) {
+            return;
+        }
+        try {
+            userService.deleteUser(user.userId());
+            loadData();
+        } catch (ServiceException e) {
+            showError(e);
         }
     }
 
@@ -191,19 +256,25 @@ public class UserManagementPanel extends JPanel {
         if (user == null) {
             return;
         }
-        int row = userTable.getSelectedRow();
-        String lockedText = AdminFormat.accountStatus(AccountStatus.LOCKED);
-        boolean isLocked = lockedText.equals(userTableModel.getValueAt(row, COLUMN_STATUS));
-
+        boolean isLocked = user.accountStatus() == AccountStatus.LOCKED;
         String question = isLocked
                 ? "Mở khóa tài khoản \"" + user.username() + "\"?"
-                : "Khóa tài khoản \"" + user.username() + "\"? Người dùng sẽ không thể đăng nhập.";
+                : "Khóa tài khoản \"" + user.username() + "\"? Người dùng sẽ bị đăng xuất và không thể đăng nhập.";
         int answer = JOptionPane.showConfirmDialog(this, question, "Xác nhận",
                 JOptionPane.YES_NO_OPTION, JOptionPane.QUESTION_MESSAGE);
-        if (answer == JOptionPane.YES_OPTION) {
-            AccountStatus newStatus = isLocked ? AccountStatus.ACTIVE : AccountStatus.LOCKED;
-            userTableModel.setValueAt(AdminFormat.accountStatus(newStatus), row, COLUMN_STATUS);
+        if (answer != JOptionPane.YES_OPTION) {
+            return;
         }
+        try {
+            userService.setLocked(user.userId(), !isLocked);
+            loadData();
+        } catch (ServiceException e) {
+            showError(e);
+        }
+    }
+
+    private void showError(ServiceException e) {
+        JOptionPane.showMessageDialog(this, e.getMessage(), "Lỗi", JOptionPane.ERROR_MESSAGE);
     }
 
     private Window getOwnerWindow() {

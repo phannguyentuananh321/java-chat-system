@@ -1,5 +1,8 @@
 package edu.hcmus.chat.admin.ui;
 
+import edu.hcmus.chat.admin.service.ServiceException;
+import edu.hcmus.chat.admin.service.UserService;
+import edu.hcmus.chat.common.model.GenderType;
 import edu.hcmus.chat.common.model.User;
 import edu.hcmus.chat.common.ui.Theme;
 
@@ -11,11 +14,19 @@ import java.awt.*;
  * Pass null to add; pass a user to edit (username is locked, no password field,
  * because the password has its own dialog).
  *
+ * The dialog only collects text; UserService checks it and saves it.
+ * After setVisible(true) returns, isSaved() tells the caller whether to reload.
+ *
  * Owner: Member A (admin).
  */
 public class UserFormDialog extends JDialog {
 
+    // Same order as the gender combo box items
+    private static final GenderType[] GENDERS = {GenderType.MALE, GenderType.FEMALE, GenderType.OTHER};
+
+    private final UserService userService;
     private final User editingUser;
+    private boolean saved = false;
 
     private JTextField usernameField;
     private JPasswordField passwordField;
@@ -25,13 +36,18 @@ public class UserFormDialog extends JDialog {
     private JTextField dateOfBirthField;
     private JComboBox<String> genderComboBox;
 
-    public UserFormDialog(Window owner, User editingUser) {
+    public UserFormDialog(Window owner, UserService userService, User editingUser) {
         super(owner, editingUser == null ? "Thêm người dùng" : "Cập nhật người dùng", ModalityType.APPLICATION_MODAL);
+        this.userService = userService;
         this.editingUser = editingUser;
         initUI();
         if (editingUser != null) {
             fillForm(editingUser);
         }
+    }
+
+    public boolean isSaved() {
+        return saved;
     }
 
     private boolean isAddMode() {
@@ -127,21 +143,34 @@ public class UserFormDialog extends JDialog {
         usernameField.setEditable(false);
         fullNameField.setText(user.fullName());
         emailField.setText(user.email());
-        addressField.setText(user.address());
+        addressField.setText(user.address() == null ? "" : user.address());
         dateOfBirthField.setText(AdminFormat.date(user.dateOfBirth()));
-        genderComboBox.setSelectedItem(AdminFormat.gender(user.gender()));
+        if (user.gender() != null) {
+            genderComboBox.setSelectedItem(AdminFormat.gender(user.gender()));
+        }
     }
 
     /**
-     * V1: only checks the required fields, nothing is stored yet.
+     * Hands the raw text to the service. If a rule fails, the dialog stays open
+     * with the service's message so the admin can fix the field.
      */
     private void save() {
-        boolean missingPassword = isAddMode() && passwordField.getPassword().length == 0;
-        if (usernameField.getText().isBlank() || fullNameField.getText().isBlank() || missingPassword) {
-            JOptionPane.showMessageDialog(this, "Vui lòng nhập đủ tên đăng nhập, mật khẩu và họ tên.",
-                    "Thiếu thông tin", JOptionPane.WARNING_MESSAGE);
+        GenderType gender = GENDERS[genderComboBox.getSelectedIndex()];
+        try {
+            if (isAddMode()) {
+                userService.addUser(usernameField.getText(), new String(passwordField.getPassword()),
+                        fullNameField.getText(), emailField.getText(), addressField.getText(),
+                        dateOfBirthField.getText(), gender);
+            } else {
+                userService.updateUser(editingUser.userId(), fullNameField.getText(), emailField.getText(),
+                        addressField.getText(), dateOfBirthField.getText(), gender);
+            }
+        } catch (ServiceException e) {
+            JOptionPane.showMessageDialog(this, e.getMessage(), "Không lưu được", JOptionPane.WARNING_MESSAGE);
             return;
         }
+
+        saved = true;
         JOptionPane.showMessageDialog(this, "Đã lưu thông tin người dùng.", "Thành công",
                 JOptionPane.INFORMATION_MESSAGE);
         dispose();

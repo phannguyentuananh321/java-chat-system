@@ -1,6 +1,9 @@
 package edu.hcmus.chat.admin.ui;
 
+import edu.hcmus.chat.admin.service.ServiceException;
+import edu.hcmus.chat.admin.service.UserService;
 import edu.hcmus.chat.common.model.User;
+import edu.hcmus.chat.common.model.UserSession;
 import edu.hcmus.chat.common.ui.Theme;
 
 import javax.swing.*;
@@ -19,10 +22,12 @@ public class UserDetailDialog extends JDialog {
     public static final int TAB_LOGIN_HISTORY = 0;
     public static final int TAB_FRIENDS = 1;
 
+    private final UserService userService;
     private final User user;
 
-    public UserDetailDialog(Window owner, User user, int startTab) {
+    public UserDetailDialog(Window owner, UserService userService, User user, int startTab) {
         super(owner, "Chi tiết người dùng", ModalityType.APPLICATION_MODAL);
+        this.userService = userService;
         this.user = user;
         initUI(startTab);
     }
@@ -57,21 +62,39 @@ public class UserDetailDialog extends JDialog {
 
     private JComponent createLoginHistoryTab() {
         DefaultTableModel model = AdminUi.createReadOnlyModel(new String[]{"Đăng nhập lúc", "Đăng xuất lúc"});
-        for (DummyAdminData.LoginRecord login : DummyAdminData.getLoginHistoryOf(user.userId())) {
-            model.addRow(new Object[]{
-                    AdminFormat.dateTime(login.loginAt()),
-                    // still open session: no logout time yet
-                    login.logoutAt() == null ? "Đang trực tuyến" : AdminFormat.dateTime(login.logoutAt())
-            });
+        try {
+            for (UserSession session : userService.getLoginHistory(user.userId())) {
+                model.addRow(new Object[]{
+                        AdminFormat.dateTime(session.loginAt()),
+                        // still open session: no logout time yet
+                        session.logoutAt() == null ? "Đang trực tuyến" : AdminFormat.dateTime(session.logoutAt())
+                });
+            }
+        } catch (ServiceException e) {
+            return createErrorLabel(e);
         }
         return AdminUi.createTableScrollPane(AdminUi.createTable(model));
     }
 
     private JComponent createFriendsTab() {
         DefaultTableModel model = AdminUi.createReadOnlyModel(new String[]{"Tên đăng nhập", "Họ và tên", "Email"});
-        for (User friend : DummyAdminData.getFriendsOf(user.userId())) {
-            model.addRow(new Object[]{friend.username(), friend.fullName(), friend.email()});
+        try {
+            for (User friend : userService.getFriends(user.userId())) {
+                model.addRow(new Object[]{friend.username(), friend.fullName(), friend.email()});
+            }
+        } catch (ServiceException e) {
+            return createErrorLabel(e);
         }
         return AdminUi.createTableScrollPane(AdminUi.createTable(model));
+    }
+
+    /**
+     * Shown in place of the table when the data can't be loaded.
+     */
+    private JComponent createErrorLabel(ServiceException e) {
+        JLabel label = new JLabel(e.getMessage(), SwingConstants.CENTER);
+        label.setFont(Theme.FONT_REGULAR);
+        label.setForeground(Theme.DANGER_COLOR);
+        return label;
     }
 }
