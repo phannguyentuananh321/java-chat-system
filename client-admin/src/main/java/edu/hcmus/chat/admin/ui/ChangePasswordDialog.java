@@ -1,26 +1,30 @@
 package edu.hcmus.chat.admin.ui;
 
+import edu.hcmus.chat.admin.service.ServiceException;
+import edu.hcmus.chat.admin.service.UserService;
 import edu.hcmus.chat.common.model.User;
 import edu.hcmus.chat.common.ui.Theme;
 
 import javax.swing.*;
 import java.awt.*;
-import java.util.Arrays;
 
 /**
  * Dialog: admin sets a new password for a user (admin requirement 1d).
+ * Length and "both fields match" are checked by UserService.
  *
  * Owner: Member A (admin).
  */
 public class ChangePasswordDialog extends JDialog {
 
+    private final UserService userService;
     private final User user;
 
     private JPasswordField newPasswordField;
     private JPasswordField confirmPasswordField;
 
-    public ChangePasswordDialog(Window owner, User user) {
+    public ChangePasswordDialog(Window owner, UserService userService, User user) {
         super(owner, "Đổi mật khẩu", ModalityType.APPLICATION_MODAL);
+        this.userService = userService;
         this.user = user;
         initUI();
     }
@@ -52,7 +56,7 @@ public class ChangePasswordDialog extends JDialog {
         confirmPasswordField = new JPasswordField(18);
         confirmPasswordField.setFont(Theme.FONT_REGULAR);
 
-        // Two label/field rows, same idea as UserFormDialog but small enough for a GridLayout
+        // Two label/field rows, small enough for a GridLayout
         JPanel form = new JPanel(new GridLayout(2, 2, 10, 12));
         form.setOpaque(false);
         form.add(AdminUi.createLabel("Mật khẩu mới"));
@@ -76,23 +80,18 @@ public class ChangePasswordDialog extends JDialog {
         content.add(buttonBar, BorderLayout.SOUTH);
     }
 
-    /**
-     * V1: checks the two fields match, nothing is stored yet.
-     */
     private void save() {
-        char[] newPassword = newPasswordField.getPassword();
-        char[] confirmPassword = confirmPasswordField.getPassword();
-
-        if (newPassword.length == 0) {
-            JOptionPane.showMessageDialog(this, "Vui lòng nhập mật khẩu mới.", "Thiếu thông tin",
+        try {
+            userService.changePassword(user.userId(),
+                    new String(newPasswordField.getPassword()),
+                    new String(confirmPasswordField.getPassword()));
+        } catch (ServiceException e) {
+            JOptionPane.showMessageDialog(this, e.getMessage(), "Không đổi được mật khẩu",
                     JOptionPane.WARNING_MESSAGE);
-        } else if (!Arrays.equals(newPassword, confirmPassword)) {
-            JOptionPane.showMessageDialog(this, "Mật khẩu nhập lại không khớp.", "Sai thông tin",
-                    JOptionPane.WARNING_MESSAGE);
-        } else {
-            JOptionPane.showMessageDialog(this, "Đã cập nhật mật khẩu cho " + user.username() + ".",
-                    "Thành công", JOptionPane.INFORMATION_MESSAGE);
-            dispose();
+            return;
         }
+        JOptionPane.showMessageDialog(this, "Đã cập nhật mật khẩu cho " + user.username() + ".",
+                "Thành công", JOptionPane.INFORMATION_MESSAGE);
+        dispose();
     }
 }

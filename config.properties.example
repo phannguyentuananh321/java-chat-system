@@ -4,6 +4,11 @@
 # Không commit file config.properties chứa thông tin nhạy cảm lên Git.
 # ===================================================================
 
+# Cấu hình kết nối cơ sở dữ liệu MySQL (đặt config.properties cạnh file .jar)
+db.url=jdbc:mysql://localhost:3306/chat_system?useUnicode=true&characterEncoding=UTF-8&serverTimezone=Asia/Ho_Chi_Minh
+db.username=root
+db.password=
+
 # Cấu hình kết nối TCP Socket (Server sẽ được phát triển ở Phiên bản 2)
 app.server.host=127.0.0.1
 app.server.port=8888

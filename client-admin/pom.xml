@@ -30,6 +30,13 @@
             <artifactId>flatlaf</artifactId>
         </dependency>
 
+        <!-- MySQL JDBC driver (admin talks to the database directly for now) -->
+        <dependency>
+            <groupId>com.mysql</groupId>
+            <artifactId>mysql-connector-j</artifactId>
+            <version>8.4.0</version>
+        </dependency>
+
         <!-- Unit test JUnit 5 -->
         <dependency>
             <groupId>org.junit.jupiter</groupId>
