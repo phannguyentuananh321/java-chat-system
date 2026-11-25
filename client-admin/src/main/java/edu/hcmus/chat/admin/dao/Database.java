@@ -26,10 +26,21 @@ public final class Database {
         // static access only
     }
 
+    /**
+     * A missing or broken config.properties is reported as an SQLException too,
+     * so callers only have one kind of "can't reach the database" error to handle.
+     */
     public static Connection getConnection() throws SQLException {
-        return DriverManager.getConnection(
-                AppConfig.get("db.url"),
-                AppConfig.get("db.username"),
-                AppConfig.get("db.password"));
+        String url;
+        String username;
+        String password;
+        try {
+            url = AppConfig.get("db.url");
+            username = AppConfig.get("db.username");
+            password = AppConfig.get("db.password");
+        } catch (IllegalStateException e) {
+            throw new SQLException(e.getMessage(), e);
+        }
+        return DriverManager.getConnection(url, username, password);
     }
 }
